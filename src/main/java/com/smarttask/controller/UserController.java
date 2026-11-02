@@ -3,7 +3,6 @@ package com.smarttask.controller;
 import com.smarttask.model.User;
 import com.smarttask.service.UserService;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,60 +14,53 @@ public class UserController
 {
     private final UserService userService;
 
+    // Constructor Injection
     public UserController(UserService userService) {
         this.userService = userService;
     }
 
-    // Register a new user
-    @PostMapping("/register")
-    public ResponseEntity<User> registerUser(@RequestBody User user) {
-
-        User savedUser = userService.registerUser(user);
-
-        // Never expose the password hash in API responses
-        savedUser.setPasswordHash(null);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedUser);
+    // Remove password hash before returning user details
+    private User removePassword(User user) {
+        if (user != null) {
+            user.setPasswordHash(null);
+        }
+        return user;
     }
 
-    // Get all users
+    // 1. Get all users
     @GetMapping
     public ResponseEntity<List<User>> getAllUsers() {
 
         List<User> users = userService.getAllUsers();
 
-        // Hide password hashes
         for (User user : users) {
-            user.setPasswordHash(null);
+            removePassword(user);
         }
 
         return ResponseEntity.ok(users);
     }
 
-    // Get a user by ID
+    // 2. Get user by ID
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+    public ResponseEntity<User> getUserById(
+            @PathVariable Long id) {
 
         User user = userService.getUserById(id);
 
-        user.setPasswordHash(null);
-
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(removePassword(user));
     }
 
-    // Get a user by email
+    // 3. Get user by email
     @GetMapping("/email/{email}")
     public ResponseEntity<User> getUserByEmail(
             @PathVariable String email) {
 
         User user = userService.getUserByEmail(email);
 
-        user.setPasswordHash(null);
-
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(removePassword(user));
     }
 
-    // Update user details
+    // 4. Update user profile
     @PutMapping("/{id}")
     public ResponseEntity<User> updateUser(
             @PathVariable Long id,
@@ -78,26 +70,30 @@ public class UserController
 
         User updatedUser = userService.updateUser(user);
 
-        updatedUser.setPasswordHash(null);
-
-        return ResponseEntity.ok(updatedUser);
+        return ResponseEntity.ok(removePassword(updatedUser));
     }
 
-    // Deactivate a user
+    // 5. Deactivate user
     @PutMapping("/{id}/deactivate")
-    public ResponseEntity<String> deactivateUser(@PathVariable Long id) {
+    public ResponseEntity<String> deactivateUser(
+            @PathVariable Long id) {
 
         userService.deactivateUser(id);
 
-        return ResponseEntity.ok("User deactivated successfully.");
+        return ResponseEntity.ok(
+            "User deactivated successfully"
+        );
     }
 
-    // Activate a user
+    // 6. Activate user
     @PutMapping("/{id}/activate")
-    public ResponseEntity<String> activateUser(@PathVariable Long id) {
+    public ResponseEntity<String> activateUser(
+            @PathVariable Long id) {
 
         userService.activateUser(id);
 
-        return ResponseEntity.ok("User activated successfully.");
+        return ResponseEntity.ok(
+            "User activated successfully"
+        );
     }
 }
