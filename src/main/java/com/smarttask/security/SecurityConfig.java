@@ -29,7 +29,17 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
 
             .authorizeHttpRequests(auth -> auth
+
+                // Public authentication endpoints
                 .requestMatchers("/api/auth/**").permitAll()
+
+                // All User Management APIs: SUPER_ADMIN only
+                .requestMatchers("/api/users/**").hasRole("SUPER_ADMIN")
+                
+                // Admins can access their own team API
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                // All remaining endpoints require authentication
                 .anyRequest().authenticated()
             )
 

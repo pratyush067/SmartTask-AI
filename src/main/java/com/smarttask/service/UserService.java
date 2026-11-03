@@ -26,7 +26,6 @@ public class UserService
     // 1. Register a new user
     public User registerUser(User user) {
 
-        // Validate required fields
         if (user.getFullName() == null ||
             user.getFullName().trim().isEmpty()) {
 
@@ -51,14 +50,13 @@ public class UserService
             );
         }
 
-        // Check duplicate email
         if (userRepository.getUserByEmail(user.getEmail()) != null) {
             throw new IllegalArgumentException(
                 "Email is already registered"
             );
         }
 
-        // Every public registration creates a normal USER
+        // Public registration always creates a normal USER
         user.setRole("USER");
         user.setAdminId(null);
         user.setActive(true);
@@ -69,11 +67,56 @@ public class UserService
 
         user.setPasswordHash(hashedPassword);
 
-        // Save user
         return userRepository.saveUser(user);
     }
 
-    // 2. Retrieve user by ID
+    // 2. Create a new Admin
+    public User createAdmin(User user) {
+
+        if (user.getFullName() == null ||
+            user.getFullName().trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                "Name cannot be empty"
+            );
+        }
+
+        if (user.getEmail() == null ||
+            user.getEmail().trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                "Email cannot be empty"
+            );
+        }
+
+        if (user.getPasswordHash() == null ||
+            user.getPasswordHash().length() < 8) {
+
+            throw new IllegalArgumentException(
+                "Password must contain at least 8 characters"
+            );
+        }
+
+        if (userRepository.getUserByEmail(user.getEmail()) != null) {
+            throw new IllegalArgumentException(
+                "Email is already registered"
+            );
+        }
+
+        user.setRole("ADMIN");
+        user.setAdminId(null);
+        user.setActive(true);
+
+        // Hash password before storing
+        String hashedPassword =
+            passwordEncoder.encode(user.getPasswordHash());
+
+        user.setPasswordHash(hashedPassword);
+
+        return userRepository.saveUser(user);
+    }
+
+    // 3. Retrieve user by ID
     public User getUserById(Long userId) {
 
         User user = userRepository.getUserById(userId);
@@ -87,7 +130,7 @@ public class UserService
         return user;
     }
 
-    // 3. Retrieve user by email
+    // 4. Retrieve user by email
     public User getUserByEmail(String email) {
 
         User user = userRepository.getUserByEmail(email);
@@ -101,18 +144,17 @@ public class UserService
         return user;
     }
 
-    // 4. Retrieve all users
+    // 5. Retrieve all users
     public List<User> getAllUsers() {
 
         return userRepository.getAllUsers();
     }
 
-    // 5. Update user profile details
+    // 6. Update user profile details
     public User updateUser(User user) {
 
         User existingUser = getUserById(user.getUserId());
 
-        // Check whether the new email belongs to another user
         User emailUser =
             userRepository.getUserByEmail(user.getEmail());
 
@@ -141,7 +183,7 @@ public class UserService
         return user;
     }
 
-    // 6. Deactivate user
+    // 7. Deactivate user
     public boolean deactivateUser(Long userId) {
 
         User user = getUserById(userId);
@@ -151,7 +193,7 @@ public class UserService
         return userRepository.updateUser(user);
     }
 
-    // 7. Activate user
+    // 8. Activate user
     public boolean activateUser(Long userId) {
 
         User user = getUserById(userId);
@@ -161,7 +203,7 @@ public class UserService
         return userRepository.updateUser(user);
     }
 
-    // 8. Verify password during login
+    // 9. Verify password during login
     public boolean verifyPassword(
             String rawPassword,
             String hashedPassword) {
@@ -171,4 +213,75 @@ public class UserService
             hashedPassword
         );
     }
+
+    // 10. Assign a registered User to an Admin
+    public boolean assignUserToAdmin(Long userId, Long adminId) {
+
+        // Check whether User exists
+        User user = userRepository.getUserById(userId);
+
+        if (user == null) {
+            throw new IllegalArgumentException(
+                "User not found"
+            );
+        }
+
+        // Check whether Admin exists
+        User admin = userRepository.getUserById(adminId);
+
+        if (admin == null || !"ADMIN".equals(admin.getRole())) {
+            throw new IllegalArgumentException(
+                "Invalid Admin ID"
+            );
+        }
+
+        // Only normal Users can be assigned
+        if (!"USER".equals(user.getRole())) {
+            throw new IllegalArgumentException(
+                "Only regular Users can be assigned"
+            );
+        }
+
+        // Prevent accidental reassignment
+        if (user.getAdminId() != null) {
+            throw new IllegalArgumentException(
+                "User is already assigned to an Admin"
+            );
+        }
+
+        // Both accounts must be active
+        if (!user.isActive() || !admin.isActive()) {
+            throw new IllegalArgumentException(
+                "Both User and Admin must be active"
+            );
+        }
+
+        return userRepository.assignUserToAdmin(
+            userId,
+            adminId
+        );
+    }
+
+
+    // 11. Get all Users assigned to a particular Admin
+    public List<User> getUsersByAdminId(Long adminId) {
+
+        User admin = userRepository.getUserById(adminId);
+
+        if (admin == null || !"ADMIN".equals(admin.getRole())) {
+            throw new IllegalArgumentException(
+                "Invalid Admin ID"
+            );
+        }
+
+        return userRepository.getUsersByAdminId(adminId);
+    }
+
+
+    // 12. Get all Users not assigned to any Admin
+    public List<User> getUnassignedUsers() {
+
+        return userRepository.getUnassignedUsers();
+    }
+
 }

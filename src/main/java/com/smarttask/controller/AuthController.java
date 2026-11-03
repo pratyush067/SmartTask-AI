@@ -8,12 +8,14 @@ import com.smarttask.model.User;
 import com.smarttask.service.UserService;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,6 +31,9 @@ public class AuthController
 {
     private final UserService userService;
 
+    private final HttpSessionSecurityContextRepository securityContextRepository =
+        new HttpSessionSecurityContextRepository();
+
     // Constructor Injection
     public AuthController(UserService userService) {
         this.userService = userService;
@@ -40,14 +45,12 @@ public class AuthController
             @RequestBody RegisterRequest request) {
 
         try {
-            // Create User object
             User user = new User();
 
             user.setFullName(request.getFullName());
             user.setEmail(request.getEmail());
             user.setPasswordHash(request.getPassword());
 
-            // UserService hashes password and assigns USER role
             User registeredUser = userService.registerUser(user);
 
             AuthResponse response = new AuthResponse(
@@ -63,7 +66,8 @@ public class AuthController
 
         } catch (IllegalArgumentException e) {
 
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(e.getMessage());
         }
     }
 
@@ -71,7 +75,8 @@ public class AuthController
     @PostMapping("/login")
     public ResponseEntity<?> login(
             @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         try {
             // Find user using email
@@ -83,7 +88,7 @@ public class AuthController
                         .body("Your account is deactivated");
             }
 
-            // Verify entered password against BCrypt hash
+            // Verify password
             boolean validPassword = userService.verifyPassword(
                 request.getPassword(),
                 user.getPasswordHash()
@@ -94,7 +99,7 @@ public class AuthController
                         .body("Invalid email or password");
             }
 
-            // Create authentication token with user's role
+            // Create authentication with user's role
             UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                     user.getEmail(),
@@ -114,14 +119,11 @@ public class AuthController
 
             SecurityContextHolder.setContext(context);
 
-            // Create or obtain HTTP session
-            HttpSession session = httpRequest.getSession(true);
-
-            // Store authenticated context in session
-            session.setAttribute(
-                HttpSessionSecurityContextRepository
-                    .SPRING_SECURITY_CONTEXT_KEY,
-                context
+            // Explicitly save SecurityContext in HTTP session
+            securityContextRepository.saveContext(
+                context,
+                httpRequest,
+                httpResponse
             );
 
             AuthResponse response = new AuthResponse(
@@ -156,8 +158,34 @@ public class AuthController
 
         SecurityContextHolder.clearContext();
 
-        return ResponseEntity.ok(
-            "Logout successful"
+        return ResponseEntity.ok("Logout successful");
+    }
+
+    // 4. Get currently logged-in user
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(
+            Authentication authentication) {
+
+        if (authentication == null ||
+            !authentication.isAuthenticated() ||
+            authentication instanceof AnonymousAuthenticationToken) {
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("User is not logged in");
+        }
+
+        String email = authentication.getName();
+
+        User user = userService.getUserByEmail(email);
+
+        AuthResponse response = new AuthResponse(
+            "Session active",
+            user.getUserId(),
+            user.getFullName(),
+            user.getEmail(),
+            user.getRole()
         );
+
+        return ResponseEntity.ok(response);
     }
 }

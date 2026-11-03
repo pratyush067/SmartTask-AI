@@ -144,4 +144,46 @@ public class UserRepository
 
         return rows > 0;
     }
+
+    // 7. Assign a registered user to an Admin
+    public boolean assignUserToAdmin(Long userId, Long adminId) {
+
+        String sql = "UPDATE users SET admin_id = ? " +
+                    "WHERE user_id = ? AND role = 'USER'";
+
+        int rows = jdbcTemplate.update(
+            sql,
+            adminId,
+            userId
+        );
+
+        return rows > 0;
+    }
+
+    // 8. Retrieve all users assigned to a particular Admin
+    public List<User> getUsersByAdminId(Long adminId) {
+
+        String sql = "SELECT * FROM users " +
+                    "WHERE admin_id = ? AND role = 'USER' " +
+                    "ORDER BY user_id";
+
+        return jdbcTemplate.query(
+            sql,
+            userRowMapper,
+            adminId
+        );
+    }
+
+    // 9. Retrieve users who have not been assigned to an Admin
+    public List<User> getUnassignedUsers() {
+
+        String sql = "SELECT * FROM users " +
+                    "WHERE admin_id IS NULL AND role = 'USER' " +
+                    "ORDER BY user_id";
+
+        return jdbcTemplate.query(
+            sql,
+            userRowMapper
+        );
+    }
 }
