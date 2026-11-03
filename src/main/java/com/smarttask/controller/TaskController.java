@@ -1,118 +1,229 @@
 package com.smarttask.controller;
 
 import com.smarttask.model.Task;
+import com.smarttask.model.User;
 import com.smarttask.service.TaskService;
+import com.smarttask.service.UserService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tasks")
-public class TaskController
-{
+public class TaskController {
+
     private final TaskService taskService;
+    private final UserService userService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(
+            TaskService taskService,
+            UserService userService) {
+
         this.taskService = taskService;
+        this.userService = userService;
     }
 
-    // Create a new task
+    // Get the currently logged-in user
+    private User getLoggedInUser(Authentication authentication) {
+
+        if (authentication == null) {
+            throw new IllegalArgumentException(
+                    "Authentication required."
+            );
+        }
+
+        User user = userService.getUserByEmail(authentication.getName());
+
+        if (user == null || !user.isActive()) {
+            throw new IllegalArgumentException(
+                    "Invalid or inactive user."
+            );
+        }
+
+        return user;
+    }
+
+    // Handle error responses
+    private ResponseEntity<?> errorResponse(
+            IllegalArgumentException e) {
+
+        String message = e.getMessage();
+
+        if ("Task not found.".equals(message)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", message));
+        }
+
+        if (message != null &&
+                (message.contains("not authorized") ||
+                 message.contains("only view") ||
+                 message.contains("only assign") ||
+                 message.contains("cannot edit") ||
+                 message.contains("only mark") ||
+                 message.contains("cannot cancel"))) {
+
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", message));
+        }
+
+        return ResponseEntity.badRequest()
+                .body(Map.of("message",
+                        message == null ? "Invalid request." : message));
+    }
+
+    // 1. Create a task
     @PostMapping
-    public ResponseEntity<Task> createTask(@RequestBody Task task) {
+    public ResponseEntity<?> createTask(
+            @RequestBody Task task,
+            Authentication authentication) {
 
-        Task savedTask = taskService.createTask(task);
+        try {
+            User actor = getLoggedInUser(authentication);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedTask);
+            Task savedTask = taskService.createTask(task, actor);
+
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(savedTask);
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Get all tasks
+    // 2. Get all accessible tasks
     @GetMapping
-    public ResponseEntity<List<Task>> getAllTasks() {
+    public ResponseEntity<?> getAllTasks(
+            Authentication authentication) {
 
-        return ResponseEntity.ok(taskService.getAllTasks());
+        try {
+            User actor = getLoggedInUser(authentication);
+
+            List<Task> tasks = taskService.getAllTasks(actor);
+
+            return ResponseEntity.ok(tasks);
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Get a task by ID
-    @GetMapping("/{id}")
-    public ResponseEntity<Task> getTaskById(@PathVariable Long id) {
+    // 3. Get a task by ID
+    @GetMapping("/{taskId}")
+    public ResponseEntity<?> getTaskById(
+            @PathVariable Long taskId,
+            Authentication authentication) {
 
-        return ResponseEntity.ok(taskService.getTaskById(id));
+        try {
+            User actor = getLoggedInUser(authentication);
+
+            return ResponseEntity.ok(
+                    taskService.getTaskById(taskId, actor)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Get tasks assigned to a user
+    // 4. Get tasks assigned to a user
     @GetMapping("/assigned/{userId}")
-    public ResponseEntity<List<Task>> getTasksAssignedToUser(
-            @PathVariable Long userId) {
+    public ResponseEntity<?> getTasksAssignedToUser(
+            @PathVariable Long userId,
+            Authentication authentication) {
 
-        return ResponseEntity.ok(
-            taskService.getTasksAssignedToUser(userId)
-        );
+        try {
+            User actor = getLoggedInUser(authentication);
+
+            return ResponseEntity.ok(
+                    taskService.getTasksAssignedToUser(userId, actor)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Get tasks created by a user
-    @GetMapping("/created/{userId}")
-    public ResponseEntity<List<Task>> getTasksCreatedBy(
-            @PathVariable Long userId) {
+    // 5. Update task details
+    @PutMapping("/{taskId}")
+    public ResponseEntity<?> updateTask(
+            @PathVariable Long taskId,
+            @RequestBody Task task,
+            Authentication authentication) {
 
-        return ResponseEntity.ok(
-            taskService.getTasksCreatedBy(userId)
-        );
+        try {
+            User actor = getLoggedInUser(authentication);
+
+            return ResponseEntity.ok(
+                    taskService.updateTask(taskId, task, actor)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Update task details
-    @PutMapping("/{id}")
-    public ResponseEntity<Task> updateTask(
-            @PathVariable Long id,
-            @RequestBody Task task) {
+    // 6. Update task status
+    @PutMapping("/{taskId}/status")
+    public ResponseEntity<?> updateTaskStatus(
+            @PathVariable Long taskId,
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
 
-        task.setTaskId(id);
+        try {
+            User actor = getLoggedInUser(authentication);
 
-        return ResponseEntity.ok(taskService.updateTask(task));
+            String status = request.get("status");
+
+            return ResponseEntity.ok(
+                    taskService.updateTaskStatus(taskId, status, actor)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Update task status
-    @PutMapping("/{id}/status")
-    public ResponseEntity<String> updateTaskStatus(
-            @PathVariable Long id,
-            @RequestParam String status,
-            @RequestParam Long performedBy) {
+    // 7. Update task progress
+    @PutMapping("/{taskId}/progress")
+    public ResponseEntity<?> updateTaskProgress(
+            @PathVariable Long taskId,
+            @RequestBody Map<String, Integer> request,
+            Authentication authentication) {
 
-        // Correct order: taskId, performedBy, status
-        taskService.updateTaskStatus(id, performedBy, status);
+        try {
+            User actor = getLoggedInUser(authentication);
 
-        return ResponseEntity.ok(
-            "Task status updated successfully."
-        );
+            Integer progress = request.get("progressPercent");
+
+            return ResponseEntity.ok(
+                    taskService.updateTaskProgress(taskId, progress, actor)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 
-    // Update task progress
-    @PutMapping("/{id}/progress")
-    public ResponseEntity<String> updateTaskProgress(
-            @PathVariable Long id,
-            @RequestParam int progress,
-            @RequestParam Long performedBy) {
+    // 8. Cancel a task
+    @PutMapping("/{taskId}/cancel")
+    public ResponseEntity<?> cancelTask(
+            @PathVariable Long taskId,
+            Authentication authentication) {
 
-        // Correct order: taskId, performedBy, progress
-        taskService.updateTaskProgress(id, performedBy, progress);
+        try {
+            User actor = getLoggedInUser(authentication);
 
-        return ResponseEntity.ok(
-            "Task progress updated successfully."
-        );
-    }
+            return ResponseEntity.ok(
+                    taskService.cancelTask(taskId, actor)
+            );
 
-    // Cancel a task
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<String> cancelTask(
-            @PathVariable Long id,
-            @RequestParam Long performedBy) {
-
-        taskService.cancelTask(id, performedBy);
-
-        return ResponseEntity.ok(
-            "Task cancelled successfully."
-        );
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
     }
 }

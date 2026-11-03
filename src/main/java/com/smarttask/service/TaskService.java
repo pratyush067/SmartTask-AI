@@ -2,380 +2,440 @@ package com.smarttask.service;
 
 import com.smarttask.model.Task;
 import com.smarttask.model.User;
-import com.smarttask.model.TaskActivity;
-import com.smarttask.model.Notification;
-
 import com.smarttask.repository.TaskRepository;
 import com.smarttask.repository.UserRepository;
-import com.smarttask.repository.TaskActivityRepository;
-import com.smarttask.repository.NotificationRepository;
 
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
-public class TaskService 
-{
+public class TaskService {
+
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
-    private final TaskActivityRepository activityRepository;
-    private final NotificationRepository notificationRepository;
+    private final UserService userService;
 
-    // Constructor Injection
     public TaskService(
             TaskRepository taskRepository,
             UserRepository userRepository,
-            TaskActivityRepository activityRepository,
-            NotificationRepository notificationRepository) {
+            UserService userService) {
 
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
-        this.activityRepository = activityRepository;
-        this.notificationRepository = notificationRepository;
+        this.userService = userService;
     }
 
-    // Validate whether a user exists and is active
-    private User validateActiveUser(Long userId) {
+    // 1. Create a task
+    public Task createTask(Task task, User actor) {
 
-        User user = userRepository.getUserById(userId);
+        validateActor(actor);
 
-        if (user == null || !user.isActive()) {
+        if (!"ADMIN".equals(actor.getRole()) &&
+                !"SUPER_ADMIN".equals(actor.getRole())) {
             throw new IllegalArgumentException(
-                    "User does not exist or is inactive"
+                    "You are not authorized to create tasks."
             );
         }
 
-        return user;
-    }
+        validateTaskDetails(task);
 
-    // Validate task status
-    private boolean isValidStatus(String status) {
+        task.setCreatedBy(actor.getUserId());
+        task.setStatus("PENDING");
+        task.setProgressPercent(0);
 
-        return status != null &&
-                (status.equals("PENDING") ||
-                 status.equals("IN_PROGRESS") ||
-                 status.equals("COMPLETED") ||
-                 status.equals("CANCELLED"));
-    }
-
-    // Validate task priority
-    private boolean isValidPriority(String priority) {
-
-        return priority != null &&
-                (priority.equals("LOW") ||
-                 priority.equals("MEDIUM") ||
-                 priority.equals("HIGH") ||
-                 priority.equals("URGENT"));
-    }
-
-    // Record task activity
-    private void recordActivity(
-            Long taskId,
-            Long performedBy,
-            String activityType,
-            String oldValue,
-            String newValue,
-            String remarks) {
-
-        TaskActivity activity = new TaskActivity(
-                taskId,
-                performedBy,
-                activityType,
-                oldValue,
-                newValue,
-                remarks
-        );
-
-        activityRepository.saveActivity(activity);
-    }
-
-    // 1. Create a new task
-    public Task createTask(Task task) {
-
-        if (task.getTitle() == null ||
-                task.getTitle().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Task title cannot be empty"
-            );
-        }
-
-        // Validate creator
-        validateActiveUser(task.getCreatedBy());
-
-        // Validate assigned user, if provided
-        if (task.getAssignedTo() != null) {
-            validateActiveUser(task.getAssignedTo());
-        }
-
-        // Set default status and priority
-        if (task.getStatus() == null) {
-            task.setStatus("PENDING");
-        }
-
-        if (task.getPriority() == null) {
+        if (task.getPriority() == null || task.getPriority().isBlank()) {
             task.setPriority("MEDIUM");
+        } else {
+            task.setPriority(task.getPriority().toUpperCase());
         }
 
-        if (!isValidStatus(task.getStatus())) {
-            throw new IllegalArgumentException(
-                    "Invalid task status"
-            );
+        if (task.getAssignedTo() != null) {
+            validateAssignee(task.getAssignedTo(), actor);
         }
 
-        if (!isValidPriority(task.getPriority())) {
-            throw new IllegalArgumentException(
-                    "Invalid task priority"
-            );
-        }
-
-        // Validate estimated hours
-        if (task.getEstimatedHours() != null &&
-                task.getEstimatedHours().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                    "Estimated hours must be greater than zero"
-            );
-        }
-
-        // Save task
-        Task savedTask = taskRepository.saveTask(task);
-
-        // Record task creation
-        recordActivity(
-                savedTask.getTaskId(),
-                savedTask.getCreatedBy(),
-                "CREATED",
-                null,
-                savedTask.getTitle(),
-                "Task created"
-        );
-
-        // Notify assigned user
-        if (savedTask.getAssignedTo() != null) {
-
-            recordActivity(
-                    savedTask.getTaskId(),
-                    savedTask.getCreatedBy(),
-                    "ASSIGNED",
-                    null,
-                    savedTask.getAssignedTo().toString(),
-                    "Task assigned to user"
-            );
-
-            Notification notification = new Notification(
-                    savedTask.getAssignedTo(),
-                    savedTask.getTaskId(),
-                    "New Task Assigned",
-                    "You have been assigned a task: " +
-                            savedTask.getTitle(),
-                    "TASK_ASSIGNED"
-            );
-
-            notificationRepository.saveNotification(notification);
-        }
-
-        return savedTask;
+        return taskRepository.saveTask(task);
     }
 
-    // 2. Get task by ID
-    public Task getTaskById(Long taskId) {
+    // 2. Get all tasks accessible to the logged-in user
+    public List<Task> getAllTasks(User actor) {
 
-        Task task = taskRepository.getTaskById(taskId);
+        validateActor(actor);
 
-        if (task == null) {
-            throw new IllegalArgumentException(
-                    "Task not found"
+        if ("SUPER_ADMIN".equals(actor.getRole())) {
+            return taskRepository.getAllTasks();
+        }
+
+        if ("ADMIN".equals(actor.getRole())) {
+            return taskRepository.getTasksCreatedBy(actor.getUserId());
+        }
+
+        if ("USER".equals(actor.getRole())) {
+            return taskRepository.getTasksAssignedToUser(
+                    actor.getUserId()
             );
         }
+
+        throw new IllegalArgumentException("Invalid user role.");
+    }
+
+    // 3. Get a task by ID after checking access
+    public Task getTaskById(Long taskId, User actor) {
+
+        validateActor(actor);
+
+        Task task = findTask(taskId);
+        checkTaskAccess(task, actor);
 
         return task;
     }
 
-    // 3. Get all tasks
-    public List<Task> getAllTasks() {
+    // 4. Get tasks assigned to a particular user
+    public List<Task> getTasksAssignedToUser(
+            Long userId, User actor) {
 
-        return taskRepository.getAllTasks();
-    }
+        validateActor(actor);
 
-    // 4. Get tasks assigned to a user
-    public List<Task> getTasksAssignedToUser(Long userId) {
+        if ("USER".equals(actor.getRole()) &&
+                !actor.getUserId().equals(userId)) {
+            throw new IllegalArgumentException(
+                    "You can only view your own assigned tasks."
+            );
+        }
 
-        validateActiveUser(userId);
+        if ("ADMIN".equals(actor.getRole())) {
+            List<User> team = userService.getUsersByAdminId(
+                    actor.getUserId()
+            );
+
+            boolean isTeamMember = team.stream()
+                    .anyMatch(user -> user.getUserId().equals(userId));
+
+            if (!isTeamMember) {
+                throw new IllegalArgumentException(
+                        "You can only view tasks assigned to your team."
+                );
+            }
+        }
+
+        User user = userRepository.getUserById(userId);
+
+        if (user == null) {
+            throw new IllegalArgumentException("User not found.");
+        }
 
         return taskRepository.getTasksAssignedToUser(userId);
     }
 
-    // 5. Get tasks created by an admin
-    public List<Task> getTasksCreatedBy(Long adminId) {
+    // 5. Update task details (Admin or Super Admin only)
+    public Task updateTask(
+            Long taskId, Task updatedTask, User actor) {
 
-        validateActiveUser(adminId);
+        validateActor(actor);
 
-        return taskRepository.getTasksCreatedBy(adminId);
-    }
-
-    // 6. Update task details
-    public Task updateTask(Task updatedTask) {
-
-        Task existingTask = getTaskById(
-                updatedTask.getTaskId()
-        );
-
-        if (updatedTask.getTitle() == null ||
-                updatedTask.getTitle().isBlank()) {
+        if (!"ADMIN".equals(actor.getRole()) &&
+                !"SUPER_ADMIN".equals(actor.getRole())) {
             throw new IllegalArgumentException(
-                    "Task title cannot be empty"
+                    "Users cannot edit task details."
             );
         }
+
+        Task existingTask = findTask(taskId);
+        checkTaskAccess(existingTask, actor);
+
+        validateTaskDetails(updatedTask);
 
         if (updatedTask.getAssignedTo() != null) {
-            validateActiveUser(updatedTask.getAssignedTo());
+            validateAssignee(updatedTask.getAssignedTo(), actor);
         }
 
-        if (!isValidStatus(updatedTask.getStatus()) ||
-                !isValidPriority(updatedTask.getPriority())) {
-            throw new IllegalArgumentException(
-                    "Invalid task status or priority"
+        existingTask.setTitle(updatedTask.getTitle());
+        existingTask.setDescription(updatedTask.getDescription());
+        existingTask.setAssignedTo(updatedTask.getAssignedTo());
+        existingTask.setPriority(
+                updatedTask.getPriority() == null
+                        ? existingTask.getPriority()
+                        : updatedTask.getPriority().toUpperCase()
+        );
+        existingTask.setDeadline(updatedTask.getDeadline());
+        existingTask.setEstimatedHours(updatedTask.getEstimatedHours());
+        existingTask.setActualHours(updatedTask.getActualHours());
+
+        if (updatedTask.getStatus() != null) {
+            validateStatus(updatedTask.getStatus());
+            existingTask.setStatus(updatedTask.getStatus().toUpperCase());
+        }
+
+        if (updatedTask.getProgressPercent() != null) {
+            validateProgress(updatedTask.getProgressPercent());
+            existingTask.setProgressPercent(
+                    updatedTask.getProgressPercent()
             );
         }
 
-        // Save updated task
-        boolean updated = taskRepository.updateTask(updatedTask);
+        boolean updated = taskRepository.updateTask(existingTask);
+
+        if (!updated) {
+            throw new IllegalArgumentException("Unable to update task.");
+        }
+
+        return findTask(taskId);
+    }
+
+    // 6. Update task status
+    public Task updateTaskStatus(
+            Long taskId, String status, User actor) {
+
+        validateActor(actor);
+
+        Task task = findTask(taskId);
+        checkTaskAccess(task, actor);
+
+        validateStatus(status);
+        status = status.toUpperCase();
+
+        if ("USER".equals(actor.getRole()) &&
+                !Arrays.asList("IN_PROGRESS", "COMPLETED").contains(status)) {
+            throw new IllegalArgumentException(
+                    "Users can only mark tasks as IN_PROGRESS or COMPLETED."
+            );
+        }
+
+        boolean updated = taskRepository.updateTaskStatus(taskId, status);
 
         if (!updated) {
             throw new IllegalArgumentException(
-                    "Unable to update task"
+                    "Unable to update task status."
             );
         }
 
-        // Record assignment change
-        if (existingTask.getAssignedTo() == null
-                ? updatedTask.getAssignedTo() != null
-                : !existingTask.getAssignedTo().equals(
-                        updatedTask.getAssignedTo())) {
-
-            recordActivity(
-                    updatedTask.getTaskId(),
-                    existingTask.getCreatedBy(),
-                    "ASSIGNED",
-                    existingTask.getAssignedTo() == null
-                            ? null : existingTask.getAssignedTo().toString(),
-                    updatedTask.getAssignedTo() == null
-                            ? null : updatedTask.getAssignedTo().toString(),
-                    "Task assignment updated"
-            );
-
-            if (updatedTask.getAssignedTo() != null) {
-
-                Notification notification = new Notification(
-                        updatedTask.getAssignedTo(),
-                        updatedTask.getTaskId(),
-                        "Task Assigned",
-                        "A task has been assigned to you: " +
-                                updatedTask.getTitle(),
-                        "TASK_ASSIGNED"
-                );
-
-                notificationRepository.saveNotification(notification);
-            }
-        }
-
-        return updatedTask;
+        return findTask(taskId);
     }
 
-    // 7. Update task status
-    public boolean updateTaskStatus(
-            Long taskId, Long performedBy, String newStatus) {
+    // 7. Update task progress
+    public Task updateTaskProgress(
+            Long taskId, Integer progress, User actor) {
 
-        Task task = getTaskById(taskId);
+        validateActor(actor);
 
-        validateActiveUser(performedBy);
+        Task task = findTask(taskId);
+        checkTaskAccess(task, actor);
+        validateProgress(progress);
 
-        if (!isValidStatus(newStatus)) {
+        if ("USER".equals(actor.getRole()) &&
+                "CANCELLED".equals(task.getStatus())) {
             throw new IllegalArgumentException(
-                    "Invalid task status"
+                    "Cancelled tasks cannot be updated."
             );
         }
-
-        String oldStatus = task.getStatus();
-
-        if (oldStatus.equals(newStatus)) {
-            return false;
-        }
-
-        boolean updated = taskRepository.updateTaskStatus(
-                taskId, newStatus
-        );
-
-        if (updated) {
-
-            recordActivity(
-                    taskId,
-                    performedBy,
-                    "STATUS_CHANGED",
-                    oldStatus,
-                    newStatus,
-                    "Task status updated"
-            );
-
-            if (newStatus.equals("COMPLETED") &&
-                    task.getAssignedTo() != null) {
-
-                Notification notification = new Notification(
-                        task.getAssignedTo(),
-                        taskId,
-                        "Task Completed",
-                        "Task completed: " + task.getTitle(),
-                        "TASK_COMPLETED"
-                );
-
-                notificationRepository.saveNotification(notification);
-            }
-        }
-
-        return updated;
-    }
-
-    // 8. Update task progress
-    public boolean updateTaskProgress(
-            Long taskId, Long performedBy, Integer progress) {
-
-        Task task = getTaskById(taskId);
-
-        validateActiveUser(performedBy);
-
-        if (progress == null || progress < 0 || progress > 100) {
-            throw new IllegalArgumentException(
-                    "Progress must be between 0 and 100"
-            );
-        }
-
-        Integer oldProgress = task.getProgressPercent();
 
         boolean updated = taskRepository.updateTaskProgress(
                 taskId, progress
         );
 
-        if (updated) {
-
-            recordActivity(
-                    taskId,
-                    performedBy,
-                    "PROGRESS_UPDATED",
-                    String.valueOf(oldProgress),
-                    String.valueOf(progress),
-                    "Task progress updated"
+        if (!updated) {
+            throw new IllegalArgumentException(
+                    "Unable to update task progress."
             );
         }
 
-        return updated;
+        return findTask(taskId);
     }
 
-    // 9. Cancel a task
-    public boolean cancelTask(Long taskId, Long performedBy) {
+    // 8. Cancel a task (Admin or Super Admin only)
+    public Task cancelTask(Long taskId, User actor) {
 
-        return updateTaskStatus(
-                taskId, performedBy, "CANCELLED"
+        validateActor(actor);
+
+        if (!"ADMIN".equals(actor.getRole()) &&
+                !"SUPER_ADMIN".equals(actor.getRole())) {
+            throw new IllegalArgumentException(
+                    "You are not authorized to cancel tasks."
+            );
+        }
+
+        Task task = findTask(taskId);
+        checkTaskAccess(task, actor);
+
+        boolean updated = taskRepository.updateTaskStatus(
+                taskId, "CANCELLED"
         );
+
+        if (!updated) {
+            throw new IllegalArgumentException(
+                    "Unable to cancel task."
+            );
+        }
+
+        return findTask(taskId);
+    }
+
+    // Find task without exposing it before access validation
+    private Task findTask(Long taskId) {
+
+        Task task = taskRepository.getTaskById(taskId);
+
+        if (task == null) {
+            throw new IllegalArgumentException("Task not found.");
+        }
+
+        return task;
+    }
+
+    // Check whether the logged-in user can access a task
+    private void checkTaskAccess(Task task, User actor) {
+
+        if ("SUPER_ADMIN".equals(actor.getRole())) {
+            return;
+        }
+
+        if ("ADMIN".equals(actor.getRole()) &&
+                task.getCreatedBy().equals(actor.getUserId())) {
+            return;
+        }
+
+        if ("USER".equals(actor.getRole()) &&
+                task.getAssignedTo() != null &&
+                task.getAssignedTo().equals(actor.getUserId())) {
+            return;
+        }
+
+        throw new IllegalArgumentException(
+                "You are not authorized to access this task."
+        );
+    }
+
+    // Validate the logged-in user
+    private void validateActor(User actor) {
+
+        if (actor == null || !actor.isActive()) {
+            throw new IllegalArgumentException(
+                    "Invalid or inactive user."
+            );
+        }
+    }
+
+    // Validate task details
+    private void validateTaskDetails(Task task) {
+
+        if (task == null) {
+            throw new IllegalArgumentException(
+                    "Task details are required."
+            );
+        }
+
+        if (task.getTitle() == null || task.getTitle().isBlank()) {
+            throw new IllegalArgumentException("Task title is required.");
+        }
+
+        if (task.getTitle().length() > 255) {
+            throw new IllegalArgumentException(
+                    "Task title cannot exceed 255 characters."
+            );
+        }
+
+        if (task.getDeadline() != null &&
+                task.getDeadline().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException(
+                    "Deadline cannot be in the past."
+            );
+        }
+
+        if (task.getEstimatedHours() != null &&
+                task.getEstimatedHours().signum() < 0) {
+            throw new IllegalArgumentException(
+                    "Estimated hours cannot be negative."
+            );
+        }
+
+        if (task.getActualHours() != null &&
+                task.getActualHours().signum() < 0) {
+            throw new IllegalArgumentException(
+                    "Actual hours cannot be negative."
+            );
+        }
+
+        if (task.getPriority() != null &&
+                !task.getPriority().isBlank()) {
+            validatePriority(task.getPriority());
+        }
+    }
+
+    // Validate assigned user and team membership
+    private void validateAssignee(Long userId, User actor) {
+
+        User user = userRepository.getUserById(userId);
+
+        if (user == null || !user.isActive()) {
+            throw new IllegalArgumentException(
+                    "Invalid or inactive assigned user."
+            );
+        }
+
+        if (!"USER".equals(user.getRole())) {
+            throw new IllegalArgumentException(
+                    "Tasks can only be assigned to regular users."
+            );
+        }
+
+        if ("ADMIN".equals(actor.getRole())) {
+
+            List<User> team = userService.getUsersByAdminId(
+                    actor.getUserId()
+            );
+
+            boolean isTeamMember = team.stream()
+                    .anyMatch(member -> member.getUserId().equals(userId));
+
+            if (!isTeamMember) {
+                throw new IllegalArgumentException(
+                        "You can only assign tasks to your own team members."
+                );
+            }
+        }
+    }
+
+    // Validate task status
+    private void validateStatus(String status) {
+
+        List<String> validStatuses = Arrays.asList(
+                "PENDING",
+                "IN_PROGRESS",
+                "COMPLETED",
+                "CANCELLED"
+        );
+
+        if (status == null ||
+                !validStatuses.contains(status.toUpperCase())) {
+            throw new IllegalArgumentException("Invalid task status.");
+        }
+    }
+
+    // Validate task priority
+    private void validatePriority(String priority) {
+
+        List<String> validPriorities = Arrays.asList(
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "URGENT"
+        );
+
+        if (priority == null ||
+                !validPriorities.contains(priority.toUpperCase())) {
+            throw new IllegalArgumentException("Invalid task priority.");
+        }
+    }
+
+    // Validate progress percentage
+    private void validateProgress(Integer progress) {
+
+        if (progress == null || progress < 0 || progress > 100) {
+            throw new IllegalArgumentException(
+                    "Progress must be between 0 and 100."
+            );
+        }
     }
 }
