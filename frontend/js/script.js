@@ -2760,6 +2760,84 @@ $("saveSettings")?.addEventListener("click", () => {
     toast("Profile updated in preview mode.");
 });
 
+
+// =====================================================
+// CHANGE PASSWORD
+// =====================================================
+
+$("changePasswordBtn")?.addEventListener("click", async () => {
+
+    const currentPassword = $("currentPassword").value;
+    const newPassword = $("newPassword").value;
+    const confirmNewPassword = $("confirmNewPassword").value;
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+        toast("Please fill in all password fields.");
+        return;
+    }
+
+    if (newPassword.length < 8) {
+        toast("New password must contain at least 8 characters.");
+        return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+        toast("New passwords do not match.");
+        return;
+    }
+
+    if (currentPassword === newPassword) {
+        toast("New password must be different from current password.");
+        return;
+    }
+
+    const button = $("changePasswordBtn");
+    button.disabled = true;
+    button.textContent = "Updating...";
+
+    try {
+
+        const response = await fetch(
+            `${API_BASE_URL}/auth/change-password`,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    currentPassword,
+                    newPassword,
+                    confirmNewPassword
+                })
+            }
+        );
+
+        const result = await response.text();
+
+        if (!response.ok) {
+            throw new Error(result || "Unable to change password.");
+        }
+
+        $("currentPassword").value = "";
+        $("newPassword").value = "";
+        $("confirmNewPassword").value = "";
+
+        toast("Password changed successfully!");
+
+    } catch (error) {
+
+        console.error("Password change error:", error);
+        toast(error.message || "Something went wrong.");
+
+    } finally {
+
+        button.disabled = false;
+        button.textContent = "Change password";
+    }
+});
+
+
 // =====================================================
 // INITIALIZE
 // =====================================================

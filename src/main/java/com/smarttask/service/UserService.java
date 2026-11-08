@@ -249,6 +249,66 @@ public class UserService
         );
     }
 
+    
+    // Change password of the currently logged-in user
+    public void changePassword(
+            String email,
+            String currentPassword,
+            String newPassword,
+            String confirmNewPassword) {
+
+        User user = getUserByEmail(email);
+
+        validateActor(user);
+
+        if (currentPassword == null || currentPassword.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Current password is required."
+            );
+        }
+
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new IllegalArgumentException(
+                "New password must contain at least 8 characters."
+            );
+        }
+
+        if (!newPassword.equals(confirmNewPassword)) {
+            throw new IllegalArgumentException(
+                "New password and confirmation do not match."
+            );
+        }
+
+        if (!passwordEncoder.matches(
+                currentPassword, user.getPasswordHash())) {
+
+            throw new IllegalArgumentException(
+                "Current password is incorrect."
+            );
+        }
+
+        if (passwordEncoder.matches(
+                newPassword, user.getPasswordHash())) {
+
+            throw new IllegalArgumentException(
+                "New password must be different from the current password."
+            );
+        }
+
+        String newPasswordHash = passwordEncoder.encode(newPassword);
+
+        boolean updated = userRepository.updatePasswordHash(
+            user.getUserId(),
+            newPasswordHash
+        );
+
+        if (!updated) {
+            throw new IllegalArgumentException(
+                "Unable to update password. Please try again."
+            );
+        }
+    }
+
     // 9. Verify password during login
     public boolean verifyPassword(
             String rawPassword,

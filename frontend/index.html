@@ -996,44 +996,77 @@
 
         <!-- ================= SETTINGS PAGE ================= -->
 
+        
         <section id="settingsPage" class="page-section hidden">
 
-          <div class="page-title-row">
-
-            <div>
-              <div class="eyebrow">PREFERENCES</div>
-              <h1>Settings</h1>
-              <p class="muted">
-                Manage your profile and workspace preferences.
-              </p>
+            <div class="page-title-row">
+                <div>
+                    <div class="eyebrow">PREFERENCES</div>
+                    <h1>Settings</h1>
+                    <p class="muted">
+                        Manage your account information and security.
+                    </p>
+                </div>
             </div>
 
-          </div>
+            <!-- PROFILE INFORMATION -->
+            <div class="panel settings-panel">
 
+                <h3>Profile information</h3>
 
-          <div class="panel settings-panel">
+                <label>Full name</label>
+                <input id="settingsName" type="text" disabled>
 
-            <h3>Profile information</h3>
+                <label>Email address</label>
+                <input id="settingsEmail" type="email" disabled>
 
-            <label>Full name</label>
+                <label>Role</label>
+                <input id="settingsRole" type="text" disabled>
 
-            <input id="settingsName" value="User">
+                <p class="muted">
+                    Profile information is managed by your administrator
+                    and cannot be changed here.
+                </p>
 
-            <label>Email address</label>
+            </div>
 
-            <input id="settingsEmail" value="" type="email">
+            <!-- CHANGE PASSWORD -->
+            <div class="panel settings-panel">
 
-            <label>Role</label>
+                <h3>Change password</h3>
 
-            <input id="settingsRole" value="User" disabled>
+                <label for="currentPassword">Current password</label>
+                <input
+                    id="currentPassword"
+                    type="password"
+                    placeholder="Enter current password"
+                    autocomplete="current-password"
+                >
 
-            <button class="primary-btn" id="saveSettings">
-              Save changes
-            </button>
+                <label for="newPassword">New password</label>
+                <input
+                    id="newPassword"
+                    type="password"
+                    placeholder="Enter new password"
+                    autocomplete="new-password"
+                >
 
-          </div>
+                <label for="confirmNewPassword">Confirm new password</label>
+                <input
+                    id="confirmNewPassword"
+                    type="password"
+                    placeholder="Confirm new password"
+                    autocomplete="new-password"
+                >
+
+                <button class="primary-btn" id="changePasswordBtn">
+                    Change password
+                </button>
+
+            </div>
 
         </section>
+
 
 
       </div>

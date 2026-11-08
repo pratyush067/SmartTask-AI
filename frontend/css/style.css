@@ -2760,3 +2760,50 @@ button {
         grid-template-columns: 1fr;
     }
 }
+
+/* SETTINGS SIDE-BY-SIDE LAYOUT */
+
+#settingsPage {
+    width: 100%;
+}
+
+#settingsPage .settings-panel {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+#settingsPage {
+    display: none;
+}
+
+#settingsPage:not(.hidden) {
+    display: block;
+}
+
+#settingsPage .settings-panel {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: top;
+    width: calc(50% - 12px);
+    margin-right: 16px;
+    box-sizing: border-box;
+}
+
+#settingsPage .settings-panel:nth-of-type(3) {
+    margin-right: 0;
+}
+
+#settingsPage .settings-panel input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 14px;
+}
+
+@media (max-width: 760px) {
+    #settingsPage .settings-panel {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 18px;
+    }
+}
