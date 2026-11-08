@@ -71,8 +71,9 @@ public class UserService
     }
 
     // 2. Create a new Admin
-    public User createAdmin(User user) {
-
+    public User createAdmin(User user, User actor) {
+        requireSuperAdmin(actor);
+        
         if (user.getFullName() == null ||
             user.getFullName().trim().isEmpty()) {
 
@@ -145,13 +146,26 @@ public class UserService
     }
 
     // 5. Retrieve all users
-    public List<User> getAllUsers() {
+    public List<User> getAllUsers(User actor) {
+
+        requireSuperAdmin(actor);
 
         return userRepository.getAllUsers();
     }
 
     // 6. Update user profile details
-    public User updateUser(User user) {
+    public User updateUser(User user, User actor) {
+        
+        validateActor(actor);
+
+        // Only Super Admin can update another user's profile
+        if (!"SUPER_ADMIN".equals(actor.getRole()) &&
+            !actor.getUserId().equals(user.getUserId())) {
+
+            throw new IllegalArgumentException(
+                "You are not authorized to update this profile."
+            );
+        }
 
         User existingUser = getUserById(user.getUserId());
 
@@ -184,9 +198,25 @@ public class UserService
     }
 
     // 7. Deactivate user
-    public boolean deactivateUser(Long userId) {
+    public boolean deactivateUser(Long userId, User actor) {
+
+        requireAdminOrSuperAdmin(actor);
 
         User user = getUserById(userId);
+
+        if (actor.getUserId().equals(userId)) {
+            throw new IllegalArgumentException(
+                "You cannot deactivate your own account."
+            );
+        }
+
+        if ("ADMIN".equals(actor.getRole()) &&
+            !isTeamMember(actor, user)) {
+
+            throw new IllegalArgumentException(
+                "You can only deactivate your own team members."
+            );
+        }
 
         user.setActive(false);
 
@@ -194,13 +224,29 @@ public class UserService
     }
 
     // 8. Activate user
-    public boolean activateUser(Long userId) {
+    public boolean activateUser(Long userId, User actor) {
+
+        requireAdminOrSuperAdmin(actor);
 
         User user = getUserById(userId);
 
-        user.setActive(true);
+        if (actor.getUserId().equals(userId)) {
+            throw new IllegalArgumentException(
+                "You cannot modify your own account through this operation."
+            );
+        }
 
-        return userRepository.updateUser(user);
+        if ("ADMIN".equals(actor.getRole()) &&
+            !isTeamMember(actor, user)) {
+
+            throw new IllegalArgumentException(
+                "You can only activate your own team members."
+            );
+        }
+
+        return userRepository.updateUser(
+            setUserActive(user, true)
+        );
     }
 
     // 9. Verify password during login
@@ -215,7 +261,9 @@ public class UserService
     }
 
     // 10. Assign a registered User to an Admin
-    public boolean assignUserToAdmin(Long userId, Long adminId) {
+    public boolean assignUserToAdmin(Long userId, Long adminId, User actor) {
+
+        requireSuperAdmin(actor);
 
         // Check whether User exists
         User user = userRepository.getUserById(userId);
@@ -263,8 +311,12 @@ public class UserService
     }
 
 
-    // 11. Get all Users assigned to a particular Admin
-    public List<User> getUsersByAdminId(Long adminId) {
+    // 11. Get team members of an Admin
+    public List<User> getUsersByAdminId(
+            Long adminId,
+            User actor) {
+
+        requireAdminOrSuperAdmin(actor);
 
         User admin = userRepository.getUserById(adminId);
 
@@ -274,14 +326,174 @@ public class UserService
             );
         }
 
+        // Admins can view only their own team
+        if ("ADMIN".equals(actor.getRole()) &&
+            !actor.getUserId().equals(adminId)) {
+
+            throw new IllegalArgumentException(
+                "You can only view your own team."
+            );
+        }
+
         return userRepository.getUsersByAdminId(adminId);
     }
 
 
     // 12. Get all Users not assigned to any Admin
-    public List<User> getUnassignedUsers() {
+    public List<User> getUnassignedUsers(User actor) {
+
+        requireSuperAdmin(actor);
 
         return userRepository.getUnassignedUsers();
     }
 
+    
+    // Validate that the logged-in user exists and is active
+    private void validateActor(User actor) {
+
+        if (actor == null || !actor.isActive()) {
+            throw new IllegalArgumentException(
+                "Invalid or inactive account."
+            );
+        }
+    }
+
+    // Allow only Super Admin
+    private void requireSuperAdmin(User actor) {
+
+        validateActor(actor);
+
+        if (!"SUPER_ADMIN".equals(actor.getRole())) {
+            throw new IllegalArgumentException(
+                "Only Super Admin can perform this operation."
+            );
+        }
+    }
+
+    // Allow Admin and Super Admin
+    private void requireAdminOrSuperAdmin(User actor) {
+
+        validateActor(actor);
+
+        if (!"ADMIN".equals(actor.getRole()) &&
+            !"SUPER_ADMIN".equals(actor.getRole())) {
+
+            throw new IllegalArgumentException(
+                "You are not authorized to perform this operation."
+            );
+        }
+    }
+
+    // Check whether a User belongs to an Admin
+    private boolean isTeamMember(User admin, User user) {
+
+            return admin != null &&
+                user != null &&
+                "ADMIN".equals(admin.getRole()) &&
+                "USER".equals(user.getRole()) &&
+                admin.getUserId().equals(user.getAdminId());
+        }
+
+        private User setUserActive(User user, boolean active) {
+        user.setActive(active);
+        return user;
+    }
+
+    // Retrieve a user only if the actor is authorized
+    public User getUserById(Long userId, User actor) {
+
+        validateActor(actor);
+
+        User target = getUserById(userId);
+
+        if ("SUPER_ADMIN".equals(actor.getRole())) {
+            return target;
+        }
+
+        if (actor.getUserId().equals(userId)) {
+            return target;
+        }
+
+        if ("ADMIN".equals(actor.getRole()) &&
+            isTeamMember(actor, target)) {
+            return target;
+        }
+
+        throw new IllegalArgumentException(
+            "You are not authorized to view this user."
+        );
+    }
+
+    // Retrieve a user by email only if the actor is authorized
+    public User getUserByEmail(String email, User actor) {
+
+        validateActor(actor);
+
+        User target = getUserByEmail(email);
+
+        if ("SUPER_ADMIN".equals(actor.getRole())) {
+            return target;
+        }
+
+        if (actor.getUserId().equals(target.getUserId())) {
+            return target;
+        }
+
+        if ("ADMIN".equals(actor.getRole()) &&
+            isTeamMember(actor, target)) {
+            return target;
+        }
+
+        throw new IllegalArgumentException(
+            "You are not authorized to view this user."
+        );
+    }
+
+    // Change the role of an existing user
+    public boolean changeUserRole(
+            Long userId,
+            String newRole,
+            User actor) {
+
+        requireSuperAdmin(actor);
+
+        User user = getUserById(userId);
+
+        if ("SUPER_ADMIN".equals(user.getRole())) {
+            throw new IllegalArgumentException(
+                "Super Admin role cannot be changed."
+            );
+        }
+
+        if (!"USER".equals(newRole) &&
+            !"ADMIN".equals(newRole)) {
+
+            throw new IllegalArgumentException(
+                "Invalid role. Allowed roles: USER, ADMIN."
+            );
+        }
+
+        // Prevent demoting an Admin who still has team members
+        if ("ADMIN".equals(user.getRole()) &&
+            "USER".equals(newRole)) {
+
+            List<User> team =
+                userRepository.getUsersByAdminId(userId);
+
+            if (!team.isEmpty()) {
+                throw new IllegalArgumentException(
+                    "Reassign the Admin's team members before demotion."
+                );
+            }
+        }
+
+        user.setRole(newRole);
+
+        // A normal User promoted to Admin must not retain an Admin ID
+        if ("ADMIN".equals(newRole)) {
+            user.setAdminId(null);
+        }
+
+        return userRepository.updateUser(user);
+    }
 }

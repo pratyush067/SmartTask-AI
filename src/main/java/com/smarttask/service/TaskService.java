@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class TaskService {
@@ -81,6 +83,41 @@ public class TaskService {
         throw new IllegalArgumentException("Invalid user role.");
     }
 
+    
+    // Get tasks assigned to members of the logged-in Admin's team
+    public List<Task> getTeamTasks(User actor) {
+
+        validateActor(actor);
+
+        if (!"ADMIN".equals(actor.getRole())) {
+            throw new IllegalArgumentException(
+                    "You are not authorized to view team tasks."
+            );
+        }
+
+        List<User> team = userService.getUsersByAdminId(
+                actor.getUserId(),
+                actor
+        );
+
+        // Use task ID as the key to prevent duplicate tasks.
+        Map<Long, Task> uniqueTasks = new LinkedHashMap<>();
+
+        for (User member : team) {
+
+            List<Task> memberTasks =
+                    taskRepository.getTasksAssignedToUser(
+                            member.getUserId()
+                    );
+
+            for (Task task : memberTasks) {
+                uniqueTasks.put(task.getTaskId(), task);
+            }
+        }
+
+        return List.copyOf(uniqueTasks.values());
+    }
+
     // 3. Get a task by ID after checking access
     public Task getTaskById(Long taskId, User actor) {
 
@@ -107,7 +144,8 @@ public class TaskService {
 
         if ("ADMIN".equals(actor.getRole())) {
             List<User> team = userService.getUsersByAdminId(
-                    actor.getUserId()
+                actor.getUserId(),
+                actor
             );
 
             boolean isTeamMember = team.stream()
@@ -144,6 +182,12 @@ public class TaskService {
 
         Task existingTask = findTask(taskId);
         checkTaskAccess(existingTask, actor);
+
+        if ("CANCELLED".equals(existingTask.getStatus())) {
+            throw new IllegalArgumentException(
+                    "Cancelled tasks cannot be edited."
+            );
+        }
 
         validateTaskDetails(updatedTask);
 
@@ -193,6 +237,12 @@ public class TaskService {
         Task task = findTask(taskId);
         checkTaskAccess(task, actor);
 
+        if ("CANCELLED".equals(task.getStatus())) {
+            throw new IllegalArgumentException(
+                    "Cancelled tasks cannot be updated."
+            );
+        }
+
         validateStatus(status);
         status = status.toUpperCase();
 
@@ -201,6 +251,14 @@ public class TaskService {
             throw new IllegalArgumentException(
                     "Users can only mark tasks as IN_PROGRESS or COMPLETED."
             );
+        }
+
+        if ("COMPLETED".equals(status)) {
+            taskRepository.updateTaskProgress(taskId, 100);
+        }
+
+        if ("PENDING".equals(status)) {
+            taskRepository.updateTaskProgress(taskId, 0);
         }
 
         boolean updated = taskRepository.updateTaskStatus(taskId, status);
@@ -222,6 +280,13 @@ public class TaskService {
 
         Task task = findTask(taskId);
         checkTaskAccess(task, actor);
+
+        if ("CANCELLED".equals(task.getStatus())) {
+            throw new IllegalArgumentException(
+                    "Cancelled tasks cannot be updated."
+            );
+        }
+
         validateProgress(progress);
 
         if ("USER".equals(actor.getRole()) &&
@@ -231,6 +296,14 @@ public class TaskService {
             );
         }
 
+        if (progress == 100) {
+            taskRepository.updateTaskStatus(taskId, "COMPLETED");
+        } else if (progress == 0) {
+            taskRepository.updateTaskStatus(taskId, "PENDING");
+        } else {
+            taskRepository.updateTaskStatus(taskId, "IN_PROGRESS");
+        }
+        
         boolean updated = taskRepository.updateTaskProgress(
                 taskId, progress
         );
@@ -292,7 +365,7 @@ public class TaskService {
         }
 
         if ("ADMIN".equals(actor.getRole()) &&
-                task.getCreatedBy().equals(actor.getUserId())) {
+                actor.getUserId().equals(task.getCreatedBy())) {
             return;
         }
 
@@ -330,9 +403,9 @@ public class TaskService {
             throw new IllegalArgumentException("Task title is required.");
         }
 
-        if (task.getTitle().length() > 255) {
+        if (task.getTitle().length() > 200) {
             throw new IllegalArgumentException(
-                    "Task title cannot exceed 255 characters."
+                    "Task title cannot exceed 200 characters."
             );
         }
 
@@ -383,7 +456,7 @@ public class TaskService {
         if ("ADMIN".equals(actor.getRole())) {
 
             List<User> team = userService.getUsersByAdminId(
-                    actor.getUserId()
+                    actor.getUserId(), actor
             );
 
             boolean isTeamMember = team.stream()

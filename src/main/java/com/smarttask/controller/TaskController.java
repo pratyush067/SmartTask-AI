@@ -1,3 +1,4 @@
+
 package com.smarttask.controller;
 
 import com.smarttask.model.Task;
@@ -112,7 +113,24 @@ public class TaskController {
         }
     }
 
-    // 3. Get a task by ID
+    // 3. Get tasks assigned to the logged-in Admin's team
+    @GetMapping("/team")
+    public ResponseEntity<?> getTeamTasks(
+            Authentication authentication) {
+
+        try {
+            User actor = getLoggedInUser(authentication);
+
+            List<Task> tasks = taskService.getTeamTasks(actor);
+
+            return ResponseEntity.ok(tasks);
+
+        } catch (IllegalArgumentException e) {
+            return errorResponse(e);
+        }
+    }
+
+    // 4. Get a task by ID
     @GetMapping("/{taskId}")
     public ResponseEntity<?> getTaskById(
             @PathVariable Long taskId,
@@ -130,7 +148,7 @@ public class TaskController {
         }
     }
 
-    // 4. Get tasks assigned to a user
+    // 5. Get tasks assigned to a user
     @GetMapping("/assigned/{userId}")
     public ResponseEntity<?> getTasksAssignedToUser(
             @PathVariable Long userId,
@@ -148,7 +166,7 @@ public class TaskController {
         }
     }
 
-    // 5. Update task details
+    // 6. Update task details
     @PutMapping("/{taskId}")
     public ResponseEntity<?> updateTask(
             @PathVariable Long taskId,
@@ -167,7 +185,7 @@ public class TaskController {
         }
     }
 
-    // 6. Update task status
+    // 7. Update task status
     @PutMapping("/{taskId}/status")
     public ResponseEntity<?> updateTaskStatus(
             @PathVariable Long taskId,
@@ -188,7 +206,7 @@ public class TaskController {
         }
     }
 
-    // 7. Update task progress
+    // 8. Update task progress
     @PutMapping("/{taskId}/progress")
     public ResponseEntity<?> updateTaskProgress(
             @PathVariable Long taskId,
@@ -209,7 +227,7 @@ public class TaskController {
         }
     }
 
-    // 8. Cancel a task
+    // 9. Cancel a task
     @PutMapping("/{taskId}/cancel")
     public ResponseEntity<?> cancelTask(
             @PathVariable Long taskId,

@@ -36,7 +36,7 @@ public class AdminController {
 
         // Retrieve only Users assigned to this Admin
         List<User> users =
-                userService.getUsersByAdminId(admin.getUserId());
+                userService.getUsersByAdminId(admin.getUserId(), admin);
 
         // Prepare safe response without password hashes
         List<Map<String, Object>> team = new ArrayList<>();
