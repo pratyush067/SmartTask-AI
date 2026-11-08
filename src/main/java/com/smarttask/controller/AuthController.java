@@ -3,6 +3,7 @@ package com.smarttask.controller;
 import com.smarttask.dto.RegisterRequest;
 import com.smarttask.dto.LoginRequest;
 import com.smarttask.dto.AuthResponse;
+import com.smarttask.dto.ChangePasswordRequest;
 
 import com.smarttask.model.User;
 import com.smarttask.service.UserService;
@@ -27,14 +28,13 @@ import java.util.Collections;
 
 @RestController
 @RequestMapping("/api/auth")
-public class AuthController
-{
+public class AuthController {
+
     private final UserService userService;
 
     private final HttpSessionSecurityContextRepository securityContextRepository =
         new HttpSessionSecurityContextRepository();
 
-    // Constructor Injection
     public AuthController(UserService userService) {
         this.userService = userService;
     }
@@ -65,9 +65,7 @@ public class AuthController
                     .body(response);
 
         } catch (IllegalArgumentException e) {
-
-            return ResponseEntity.badRequest()
-                    .body(e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
@@ -79,16 +77,13 @@ public class AuthController
             HttpServletResponse httpResponse) {
 
         try {
-            // Find user using email
             User user = userService.getUserByEmail(request.getEmail());
 
-            // Check whether account is active
             if (!user.isActive()) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body("Your account is deactivated");
             }
 
-            // Verify password
             boolean validPassword = userService.verifyPassword(
                 request.getPassword(),
                 user.getPasswordHash()
@@ -99,27 +94,21 @@ public class AuthController
                         .body("Invalid email or password");
             }
 
-            // Create authentication with user's role
             UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(
                     user.getEmail(),
                     null,
                     Collections.singletonList(
-                        new SimpleGrantedAuthority(
-                            "ROLE_" + user.getRole()
-                        )
+                        new SimpleGrantedAuthority("ROLE_" + user.getRole())
                     )
                 );
 
-            // Create SecurityContext
             SecurityContext context =
                 SecurityContextHolder.createEmptyContext();
 
             context.setAuthentication(authentication);
-
             SecurityContextHolder.setContext(context);
 
-            // Explicitly save SecurityContext in HTTP session
             securityContextRepository.saveContext(
                 context,
                 httpRequest,
@@ -137,7 +126,6 @@ public class AuthController
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
-
             SecurityContextHolder.clearContext();
 
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -187,5 +175,34 @@ public class AuthController
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    // 5. Change Password
+    @PutMapping("/change-password")
+    public ResponseEntity<?> changePassword(
+            @RequestBody ChangePasswordRequest request,
+            Authentication authentication) {
+
+        if (authentication == null ||
+            !authentication.isAuthenticated() ||
+            authentication instanceof AnonymousAuthenticationToken) {
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Please log in to change your password.");
+        }
+
+        try {
+            userService.changePassword(
+                authentication.getName(),
+                request.getCurrentPassword(),
+                request.getNewPassword(),
+                request.getConfirmNewPassword()
+            );
+
+            return ResponseEntity.ok("Password changed successfully.");
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

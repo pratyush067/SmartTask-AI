@@ -2675,3 +2675,135 @@ button {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* =========================================
+   TEAM PAGE LAYOUT FIX
+========================================= */
+
+/* Parent container must not behave like a grid */
+#teamMembersList {
+    display: block !important;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Four statistics tiles */
+#teamMembersList .team-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+    width: 100%;
+    margin-bottom: 28px;
+}
+
+/* Individual statistics tiles */
+#teamMembersList .team-summary-grid .stat-card {
+    min-width: 0;
+    min-height: 125px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+}
+
+#teamMembersList .team-summary-grid .stat-number {
+    font-size: 32px;
+    line-height: 1.2;
+}
+
+#teamMembersList .team-summary-grid .stat-foot {
+    font-size: 13px;
+}
+
+/* User account cards */
+#teamMembersList .team-member-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    width: 100%;
+}
+
+/* Tablet */
+@media (max-width: 1000px) {
+    #teamMembersList .team-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    #teamMembersList .team-member-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+    #teamMembersList .team-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    #teamMembersList .team-summary-grid .stat-card {
+        min-height: 105px;
+        padding: 14px;
+    }
+
+    #teamMembersList .team-summary-grid .stat-number {
+        font-size: 26px;
+    }
+
+    #teamMembersList .team-summary-grid .stat-foot {
+        font-size: 11px;
+    }
+
+    #teamMembersList .team-member-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* SETTINGS SIDE-BY-SIDE LAYOUT */
+
+#settingsPage {
+    width: 100%;
+}
+
+#settingsPage .settings-panel {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+#settingsPage {
+    display: none;
+}
+
+#settingsPage:not(.hidden) {
+    display: block;
+}
+
+#settingsPage .settings-panel {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: top;
+    width: calc(50% - 12px);
+    margin-right: 16px;
+    box-sizing: border-box;
+}
+
+#settingsPage .settings-panel:nth-of-type(3) {
+    margin-right: 0;
+}
+
+#settingsPage .settings-panel input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 14px;
+}
+
+@media (max-width: 760px) {
+    #settingsPage .settings-panel {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 18px;
+    }
+}

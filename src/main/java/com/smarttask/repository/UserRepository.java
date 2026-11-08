@@ -135,6 +135,23 @@ public class UserRepository
         return rows > 0;
     }
 
+    // Update password hash
+    public boolean updatePasswordHash(
+            Long userId,
+            String passwordHash) {
+
+        String sql = "UPDATE users SET password_hash = ? " +
+                     "WHERE user_id = ?";
+
+        int rows = jdbcTemplate.update(
+            sql,
+            passwordHash,
+            userId
+        );
+
+        return rows > 0;
+    }
+
     // 6. Delete user
     public boolean deleteUser(Long userId) {
 
